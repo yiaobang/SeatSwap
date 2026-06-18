@@ -1,0 +1,54 @@
+name: Build and Release Windows Application (JPackage)
+
+on:
+  push:
+    tags: [ "v*" ] # 只有推送标签才触发
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up JDK 26
+        uses: actions/setup-java@v4.3.0
+        with:
+          java-version: '26'
+          distribution: 'oracle'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4.3.0
+        with:
+          gradle-version: '9.5.1'
+
+      # 🌟 只运行一次原汁原味的构建，不加任何切换参数
+      - name: Run jpackage
+        env:
+          GRADLE_OPTS: "-Dfile.encoding=UTF-8 --enable-native-access=ALL-UNNAMED"
+        run: ./gradlew jpackage --no-daemon
+
+      # 🌟 统一收集：精准搜刮你写死的 SeatSwap-Portable.zip 和默认生成的安装包
+      - name: Collect Dist Files
+        shell: pwsh
+        run: |
+          mkdir dist-files
+          Copy-Item "build/jpackage/*.exe" "dist-files/" -ErrorAction SilentlyContinue
+          Copy-Item "build/jpackage/*.msi" "dist-files/" -ErrorAction SilentlyContinue
+          # 锁死 distributions 目录，抓取刚刚固定好名字的 ZIP 压缩包
+          Copy-Item "build/distributions/SeatSwap-Portable.zip" "dist-files/" -ErrorAction SilentlyContinue
+
+      - name: Create GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          files: dist-files/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
